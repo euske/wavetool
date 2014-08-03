@@ -7,7 +7,6 @@
 
 import sys
 import wavcorr
-from math import sqrt
 
 
 ##  PitchDetector

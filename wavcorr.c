@@ -63,6 +63,49 @@ double calcmags16(int length, const int16le* seq)
     return ((double)m1 - (double)m0)/2 * DIV16;
 }
 
+/* calcmatchs16: compute the similarity between two vectors. */
+double calcmatchs16(int patlen, const int16le* pat,
+		    int datalen, const int16le* data,
+		    int offset)
+{
+    int i;
+    int n;
+    double s1 = 0, s2 = 0;
+    double t1 = 0, t2 = 0;
+    double dot = 0;
+    if (patlen < datalen) {
+	/* pattern gets expanded */
+	n = datalen;
+	for (i = 0; i < datalen; i++) {
+	    double x1 = pat[(i*patlen/datalen+offset) % patlen]*DIV16;
+	    double x2 = data[i]*DIV16;
+	    s1 += x1;
+	    s2 += x2;
+	    t1 += x1*x1;
+	    t2 += x2*x2;
+	    dot += x1*x2;
+	}
+    } else {
+	/* data gets expanded */
+	n = patlen;
+	for (i = 0; i < patlen; i++) {
+	    double x1 = pat[(i+offset) % patlen]*DIV16;
+	    double x2 = data[i*datalen/patlen]*DIV16;
+	    s1 += x1;
+	    s2 += x2;
+	    t1 += x1*x1;
+	    t2 += x2*x2;
+	    dot += x1*x2;
+	}
+    }
+    double ns = (n*dot-s1*s2);
+    double nv1 = (n*t1-s1*s1);
+    double nv2 = (n*t2-s2*s2);
+    double nv = fmax(nv1, nv2);
+    double s = (nv == 0)? 0 : (ns / nv);
+    return s;
+}
+
 /* autocorrs16: find the window that has the maximum similarity. */
 int autocorrs16(double* sim, int window0, int window1, int length, const int16le* seq)
 {
@@ -373,6 +416,51 @@ static PyObject* pypsolas16(PyObject* self, PyObject* args)
 }
 
 
+/* pymatchs16(pat, offset, window, data); */
+static PyObject* pymatchs16(PyObject* self, PyObject* args)
+{
+    PyObject* pat;
+    PyObject* data;
+    int offset;
+    int window;
+
+    if (!PyArg_ParseTuple(args, "OiiO",
+			  &pat, &offset, &window, &data)) {
+	return NULL;
+    }
+  
+    if (!PyString_CheckExact(pat) ||
+	!PyString_CheckExact(data)) {
+	PyErr_SetString(PyExc_TypeError, "Must be string");
+	return NULL;
+    }
+
+    int patlen = PyString_Size(pat) / sizeof(int16le);
+    int datalen = PyString_Size(data) / sizeof(int16le);
+    if (datalen < offset+window) {
+	PyErr_SetString(PyExc_ValueError, "Invalid offset/window");
+	return NULL;
+    }
+
+    int16le* seq1 = (int16le*)PyString_AsString(pat);
+    int16le* seq2 = (int16le*)PyString_AsString(data);
+    /* find the maximum similarity. */
+    int dmax = -1;
+    double smax = -1;
+    int d;
+    for (d = 0; d < window; d++) { 
+	double s = calcmatchs16(patlen, seq1, 
+				window, &seq2[offset], d);
+	if (smax < s) {
+	    dmax = d;
+	    smax = s;
+	}
+    }
+  
+    return PyFloat_FromDouble(smax);
+}
+
+
 /* Module initialization */
 PyMODINIT_FUNC
 initwavcorr(void)
@@ -392,6 +480,9 @@ initwavcorr(void)
 	},
 	{ "psolas16", (PyCFunction)pypsolas16, METH_VARARGS,
 	  "psolas16"
+	},
+	{ "matchs16", (PyCFunction)pymatchs16, METH_VARARGS,
+	  "matchs16"
 	},
 	{NULL, NULL},
     };
