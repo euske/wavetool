@@ -35,10 +35,18 @@ double calcsims16(int n, const int16le* seq1, const int16le* seq2)
     }
     // sum((x1-s1/n)*(x2-s2/n))
     //  = sum(x1*x2 - (s1*x2+s2*x1)/n + s1*s2/n/n)
-    //  = sum(x1*x2) - (s1*sum(x2) + s2*sum(x1))/n + s1*s2/n/n*sum(1)
+    //  = sum(x1*x2) - (s1*sum(x2) + s2*sum(x1))/n + (s1*s2/n/n)*sum(1)
     //  = dot - 2*s1*s2/n + s1*s2/n = dot - s1*s2/n
-    double v = (n*t1-s1*s1) * (n*t2-s2*s2);
-    return (v == 0)? 0 : ((n*dot-s1*s2) / sqrt(v));
+    double ns = (n*dot-s1*s2);
+    // sum((x1-s1/n)^2)
+    //  = sum(x1*x1 - 2*(x1*s1)/n + s1*s1/n/n)
+    //  = sum(x1*x1) - 2*s1*sum(x1)/n + (s1*s1/n/n)*sum(1)
+    //  = t1 - 2*s1*s1/n + s1*s1/n = t1 - s1*s1/n
+    double nv1 = (n*t1-s1*s1);
+    double nv2 = (n*t2-s2*s2);
+    double nv = fmax(nv1, nv2);
+    //double nv = sqrt(nv1*nv2);
+    return (nv == 0)? 0 : (ns / nv);
 }
 
 /* calcmags16: compute the intensity of samples. */
@@ -81,6 +89,7 @@ int autocorrs16(double* sim, int window0, int window1, int length, const int16le
 	    /* remove overlapping freq. */
 	    int i2 = w*2-window0;
 	    if (i2+1 <= window1-window0) {
+		s *= 0.5;
 		sim[i2] -= s;
 		sim[i2+1] -= s;
 	    }
