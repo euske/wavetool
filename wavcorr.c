@@ -101,7 +101,7 @@ double calcmatchs16(int patlen, const int16le* pat,
     double ns = (n*dot-s1*s2);
     double nv1 = (n*t1-s1*s1);
     double nv2 = (n*t2-s2*s2);
-    double nv = fmax(nv1, nv2);
+    double nv = sqrt(nv1*nv2);
     double s = (nv == 0)? 0 : (ns / nv);
     return s;
 }

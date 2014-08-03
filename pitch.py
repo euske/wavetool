@@ -119,7 +119,8 @@ def main(argv):
             pitches = detector.feed(buf, nframes)
             for (n,sim,mag,pitch,data) in pitches:
                 if debug:
-                    print '%8d: %.3f %.3f %d' % (i, sim,mag,pitch)
+                    print ('# %d-%d: %.3f %.3f %d' %
+                           (i, i+src.framerate/pitch, sim, mag, pitch))
                 for (n,spitch) in smoother.feed(n, sim, mag, pitch):
                     if spitch:
                         print i, spitch

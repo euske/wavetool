@@ -5,12 +5,54 @@
 
 import sys
 import wavcorr
+from wavestream import WaveReader
+
+
+##  WaveMatcher
+##
+class WaveMatcher(object):
+
+    def __init__(self, threshold=0.6):
+        self.threshold = threshold
+        self.pats = []
+        return
+
+    def load_pat(self, path, name=None):
+        fp = WaveReader(path)
+        (_, pat) = fp.readraw()
+        self.pats.append((name or path, pat))
+        fp.close()
+        return
+
+    def load_wav(self, wavpath, pitchpath):
+        src = WaveReader(wavpath)
+        fp = open(pitchpath)
+        for line in fp:
+            line = line.strip()
+            (line,_,_) = line.partition('#')
+            if not line: continue
+            (f, _, pitch) = line.partition(' ')
+            f = int(f)
+            pitch = int(pitch)
+            src.seek(f)
+            (nframes, data) = src.readraw(int(src.framerate/pitch))
+            nmax = None
+            smax = -1
+            for (name,pat) in self.pats:
+                s = wavcorr.matchs16(pat, 0, nframes, data)
+                if smax < s:
+                    nmax = name
+                    smax = s
+            if self.threshold <= smax:
+                print f, smax, nmax
+        fp.close()
+        src.close()
+        return
 
 
 # main
 def main(argv):
     import getopt
-    from wavestream import WaveReader
     def usage():
         print 'usage: %s src.wav pitch pat.wav ...' % argv[0]
         return 100
@@ -20,31 +62,15 @@ def main(argv):
         return usage()
         
     if not args: return usage()
-    path = args.pop(0)
-    src = WaveReader(path)
-    
+    wavpath = args.pop(0)
     if not args: return usage()
-    pitches = []
-    fp = open(args.pop(0))
-    for line in fp:
-        line = line.strip()
-        if not line: continue
-        (f, _, pitch) = line.partition(' ')
-        pitches.append((int(f), int(pitch)))
-    fp.close()
+    pitchpath = args.pop(0)
 
-    pats = []
+    matcher = WaveMatcher()
     for path in args:
-        pat = WaveReader(path)
-        pats.append((path, pat.readraw()))
-        pat.close()
+        matcher.load_pat(path)
 
-    for (f, pitch) in pitches:
-        src.seek(f)
-        (nframes, data) = src.readraw(int(src.framerate/pitch))
-        for (name,(_,pat)) in pats:
-            s = wavcorr.matchs16(pat, 0, nframes, data)
-            print f, s, name
+    matcher.load_wav(wavpath, pitchpath)
     return
 
 if __name__ == '__main__': sys.exit(main(sys.argv))
