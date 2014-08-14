@@ -44,14 +44,14 @@ class WaveReader(object):
         return
 
     def readraw(self, nframes=0):
-        assert self.nchannels == 1
         if nframes == 0 or self._nframesleft < nframes:
             nframes = self._nframesleft
         self._nframesleft -= nframes
         return (nframes, self._fp.readframes(nframes))
     
     def read(self, nframes=0):
-        data = self.readraw(nframes)
+        assert self.nchannels == 1
+        (_,data) = self.readraw(nframes)
         a = array.array(self.arraytype)
         a.fromstring(data)
         return [ x*self.ratio for x in a ]
