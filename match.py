@@ -29,22 +29,23 @@ class WaveMatcher(object):
         fp = open(pitchpath)
         for line in fp:
             line = line.strip()
+            if not line:
+                print
             (line,_,_) = line.partition('#')
             if not line: continue
             (f, _, pitch) = line.partition(' ')
             f = int(f)
             pitch = int(pitch)
             src.seek(f)
+            r = []
             (nframes, data) = src.readraw(int(src.framerate/pitch))
-            nmax = None
-            smax = -1
             for (name,pat) in self.pats:
                 s = wavcorr.matchs16(pat, 0, nframes, data)
-                if smax < s:
-                    nmax = name
-                    smax = s
-            if self.threshold <= smax:
-                print f, smax, nmax
+                if self.threshold <= s:
+                    r.append((s, name))
+            if r:
+                r.sort(reverse=True)
+                print f, ' '.join( '%.04f:%s' % (s,name) for (s,name) in r )
         fp.close()
         src.close()
         return
@@ -54,19 +55,21 @@ class WaveMatcher(object):
 def main(argv):
     import getopt
     def usage():
-        print 'usage: %s src.wav pitch pat.wav ...' % argv[0]
+        print 'usage: %s [-t threshold] src.wav pitch pat.wav ...' % argv[0]
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], '')
+        (opts, args) = getopt.getopt(argv[1:], 't:')
     except getopt.GetoptError:
         return usage()
-        
+    threshold = 0.6
+    for (k,v) in opts:
+        if k == '-t': threshold = float(v)
     if not args: return usage()
     wavpath = args.pop(0)
     if not args: return usage()
     pitchpath = args.pop(0)
 
-    matcher = WaveMatcher()
+    matcher = WaveMatcher(threshold=threshold)
     for path in args:
         matcher.load_pat(path)
 
