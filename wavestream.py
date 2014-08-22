@@ -111,7 +111,8 @@ class WaveWriter(object):
 
     def writeraw(self, bytes):
         self.fp.write(bytes)
-        self._nframeswritten += (len(bytes)/self.sampwidth)
+        nframes = len(bytes) / (self.sampwidth*self.nchannels)
+        self._nframeswritten += nframes
         return
     
     def write(self, frames):
@@ -122,9 +123,9 @@ class WaveWriter(object):
         return
 
 
-##  WavePlayer
+##  CommandWavePlayer
 ##
-class WavePlayer(object):
+class CommandWavePlayer(object):
 
     PLAYER = ('aplay','-t','raw')
 
@@ -160,4 +161,32 @@ class WavePlayer(object):
         data = array.array(self.arraytype, data)
         self._process.stdin.write(data.tostring())
         self._nframeswritten += len(frames)
+        return
+
+
+##  PygameWavePlayer
+##
+class PygameWavePlayer(WaveWriter):
+
+    def __init__(self, nchannels=1, sampwidth=2,
+                 framerate=44100, nframes=None):
+        import pygame
+        from cStringIO import StringIO
+        fp = StringIO()
+        pygame.mixer.init()
+        self.sound = None
+        WaveWriter.__init__(self, fp, nchannels, sampwidth, framerate, nframes)
+        return
+
+    def close(self):
+        import pygame
+        from cStringIO import StringIO
+        WaveWriter.close(self)
+        fp = StringIO(self.fp.getvalue())
+        self.sound = pygame.mixer.Sound(fp)
+        return
+
+    def play(self):
+        if self.sound is not None:
+            self.sound.play()
         return

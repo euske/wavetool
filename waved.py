@@ -4,7 +4,7 @@ import os.path
 import pygame
 import array
 from cStringIO import StringIO
-from wavestream import WaveReader, WaveWriter
+from wavestream import WaveReader, WaveWriter, PygameWavePlayer
 
 class WavEdError(Exception): pass
 class WavNoFileError(Exception): pass
@@ -62,17 +62,14 @@ class WavEd(object):
             nframes = self._end - self._start
         else:
             nframes = self._length
-        fp = StringIO()
-        writer = WaveWriter(fp,
-                            nchannels=self._wav.nchannels,
-                            sampwidth=self._wav.sampwidth,
-                            framerate=self._wav.framerate)
+        player = PygameWavePlayer(nchannels=self._wav.nchannels,
+                                  sampwidth=self._wav.sampwidth,
+                                  framerate=self._wav.framerate)
         self._wav.seek(self._start)
         (_,data) = self._wav.readraw(nframes)
-        writer.writeraw(data)
-        writer.close()
-        sound = pygame.mixer.Sound(buffer(fp.getvalue()))
-        sound.play()
+        player.writeraw(data)
+        player.close()
+        player.play()
         return
 
     def status(self):
