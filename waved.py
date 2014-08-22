@@ -3,7 +3,6 @@ import sys
 import os.path
 import pygame
 import array
-from cStringIO import StringIO
 from wavestream import WaveReader, WaveWriter, PygameWavePlayer
 
 class WavEdError(Exception): pass
