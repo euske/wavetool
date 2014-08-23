@@ -10,7 +10,7 @@ CLI-based wave editor. It can be used to cut/trim a sound.
 
 Usage:
 
-   $ python waved.py input.wav
+    $ python waved.py input.wav
 
 Commands:
 
@@ -31,14 +31,14 @@ Soundeffect generator.
 
 Usage:
 
-   $ python genwav.py {-S|-Q|-T|-N} [-o out.wav] [tone ...]
+    $ python genwav.py {-S|-Q|-T|-N} [-o out.wav] [tone ...]
 
 Options:
 
-  `-S`: Sine wave.
-  `-Q`: Square wave.
-  `-T`: Triangle wave.
-  `-N`: Noise.
+  * `-S`: Sine wave.
+  * `-Q`: Square wave.
+  * `-T`: Triangle wave.
+  * `-N`: Noise.
 
 Tones can be specified by notes (e.g. `C4`).
 Multiple tones can be mixed.
@@ -51,14 +51,14 @@ Pitch detector.
 
 Usage:
 
-   $ python pitch.py [-M|-F] [-n pitchmin] [-m pitchmax] wav ...
+    $ python pitch.py [-M|-F] [-n pitchmin] [-m pitchmax] wav ...
 
 Options:
 
-  `-M`: Male voice (equivalent to `-n 75 -m 200`).
-  `-F`: Female voice (equivalent to `-n 150 -m 300`).
-  `-n`: Minumum pitch.
-  `-m`: Maximum pitch.
+  * `-M`: Male voice (equivalent to `-n 75 -m 200`).
+  * `-F`: Female voice (equivalent to `-n 150 -m 300`).
+  * `-n`: Minumum pitch.
+  * `-m`: Maximum pitch.
 
 match.py
 --------
@@ -67,5 +67,5 @@ Waveform pattern matcher.
 
 Usage:
 
-   $ python match.py [-t threshold] src.wav pitch pat1.wav pat2.wav ...
+    $ python match.py [-t threshold] src.wav pitch pat1.wav pat2.wav ...
 
