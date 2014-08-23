@@ -68,7 +68,6 @@ class WavEd(object):
         (_,data) = self._wav.readraw(nframes)
         player.writeraw(data)
         player.close()
-        player.play()
         return
 
     def status(self):

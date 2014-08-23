@@ -184,6 +184,7 @@ class PygameWavePlayer(WaveWriter):
         WaveWriter.close(self)
         fp = StringIO(self.fp.getvalue())
         self.sound = pygame.mixer.Sound(fp)
+        self.play()
         return
 
     def play(self):
