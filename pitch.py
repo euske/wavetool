@@ -2,7 +2,7 @@
 #
 # Pitch detector
 #
-# usage: python pitch.py [-M|-F] [-n pitchmin] [-m pitchmax] [-t threshold_sim] wav ...
+# usage: python pitch.py [-M|-F] [-n pitchmin] [-m pitchmax] wav ...
 #
 
 import sys

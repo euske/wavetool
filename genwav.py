@@ -3,7 +3,7 @@
 # Generates a tone wave.
 #
 # usage:
-#   $ python genwav.py {-N|-T|-Q} [-o out.wav] [tone ...]
+#   $ python genwav.py {-S|-Q|-T|-N} [-o out.wav] [tone ...]
 #
 
 import sys
