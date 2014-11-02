@@ -13,7 +13,7 @@ from wavestream import PygameWavePlayer as WavePlayer
 def main(argv):
     import getopt
     def usage():
-        print 'usage: %s [-o out.wav] [-t f0-f1] wav ...' % argv[0]
+        print 'usage: %s [-v] [-o out.wav] [-t f0-f1] wav ...' % argv[0]
         return 100
     def getv(v):
         if '.' in v:
@@ -21,19 +21,25 @@ def main(argv):
         else:
             return int(v)
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'o:t:')
+        (opts, args) = getopt.getopt(argv[1:], 'vo:t:')
     except getopt.GetoptError:
         return usage()
+    verbose = 0
     outfp = None
     ranges = []
     for (k, v) in opts:
-        if k == '-o': outfp = open(v, 'wb')
+        if k == '-v': verbose += 1
+        elif k == '-o': outfp = open(v, 'wb')
         elif k == '-t':
             (f0,_,f1) = v.partition('-')
             ranges.append((getv(f0), getv(f1)))
     dst = None
     for path in args:
         src = WaveReader(path)
+        if verbose:
+            print >>sys.stderr, \
+                ('%s: nchannels=%r, sampwidth=%r, framerate=%r, nframes=%r' %
+                 (path, src.nchannels, src.sampwidth, src.framerate, src.nframes))
         if dst is None:
             if outfp is None:
                 dst = WavePlayer(nchannels=src.nchannels,
