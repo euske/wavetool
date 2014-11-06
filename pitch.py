@@ -101,6 +101,7 @@ def main(argv):
     detector = None
     smoother = None
     for path in args:
+        print '#', path
         src = WaveReader(path)
         if src.nchannels != 1: raise ValueError('invalid number of channels')
         if src.sampwidth != 2: raise ValueError('invalid sampling width')
