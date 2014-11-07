@@ -2,7 +2,7 @@
 #
 # Sound picker
 #
-# usage: python pick.py [-b basepath] [-L left_window] [-R right_window] wav pitch ...
+# usage: python pick.py [-b basepath] [-w outer_window] [-W inner_window] wav pitch ...
 #
 
 import sys
@@ -23,26 +23,25 @@ def load_pitch(path):
 def pick_frames(triggers, w0=0, w1=0):
     (f0,f1) = (None,None)
     for t in triggers:
-        if f0 is None:
-            f0 = t-w0
-            f1 = t+w1
-        elif f1 <= t-w0:
-            yield (f0, f1)
-            f0 = t-w0
-            f1 = t+w1
-        else:
-            f1 = max(f1, t+w1)
-    if f0 is not None:
-        yield (f0, f1)
+        if f1 is None:
+            f0 = t
+        elif f1 <= t-w1:
+            yield (f0-w0, f1+w0)
+            f0 = t
+        f1 = t
+    if f0 is not None and f1 is not None:
+        yield (f0-w0, f1+w0)
     return
     
 def main(argv):
     import getopt
     def usage():
-        print 'usage: %s [-b basepath] [-L left_window] [-R right_window] src.wav pitch ...' % argv[0]
+        print ('usage: %s [-b basepath]'
+               ' [-w outer_window] [-W inner_window]'
+               ' src.wav pitch ...' % argv[0])
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'b:L:R:')
+        (opts, args) = getopt.getopt(argv[1:], 'b:w:W:')
     except getopt.GetoptError:
         return usage()
     basepath = 'out%05d.wav'
@@ -50,8 +49,8 @@ def main(argv):
     window1 = 0.1
     for (k,v) in opts:
         if k == '-b': basepath = v
-        elif k == '-L': window0 = float(v)
-        elif k == '-R': window1 = float(v)
+        elif k == '-w': window0 = float(v)
+        elif k == '-W': window1 = float(v)
     if not args: return usage()
     wavpath = args.pop(0)
     src = WaveReader(wavpath)
