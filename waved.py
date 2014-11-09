@@ -11,8 +11,9 @@ def bound(x,y,z): return max(x, min(y, z))
 
 class Cursor(object):
 
-    def __init__(self, wav):
+    def __init__(self, wav, name=None):
         self._wav = wav
+        self.name = name
         self.start = 0
         self.end = 0
         self.length = None
@@ -20,11 +21,24 @@ class Cursor(object):
                 (self.end is None and self.length is not None))
         return
 
+    def copy(self, name):
+        cur = Cursor(self._wav, name)
+        cur.start = self.start
+        cur.end = self.end
+        cur.length = self.length
+        return cur
+
     def __repr__(self):
-        if self.end is not None:
-            return 'start %d end %d' % (self.start, self.end)
+        if self.name is None:
+            if self.end is not None:
+                return 'start %d end %d' % (self.start, self.end)
+            else:
+                return 'start %d length %d' % (self.start, self.length)
         else:
-            return 'start %d length %d' % (self.start, self.length)
+            if self.end is not None:
+                return '%s: start %d end %d' % (self.name, self.start, self.end)
+            else:
+                return '%s: start %d length %d' % (self.name, self.start, self.length)
 
     def parse(self, v):
         if '.' in v:
@@ -59,6 +73,7 @@ class WavEd(object):
     def __init__(self):
         self._wav = None
         self._cur = None
+        self._curs = {}
         return
 
     def close(self):
@@ -66,6 +81,7 @@ class WavEd(object):
             self._wav.close()
             self._wav = None
             self._cur = None
+            self._curs = {}
         return
 
     def read(self, path):
@@ -73,6 +89,7 @@ class WavEd(object):
         self._wav = WaveReader(path)
         self._cur = Cursor(self._wav)
         self._cur.set_length(self._cur.parse('1.0'))
+        self._curs = {}
         print ('Read: rate=%d, frames=%d, duration=%.3f' %
                (self._wav.framerate, self._wav.nframes,
                 self._wav.nframes/float(self._wav.framerate)))
@@ -147,7 +164,12 @@ class WavEd(object):
                 self.status()
                 self.play()
             elif c == 'w' or c == 'W':
-                self.write(v, force=(c=='W'))
+                if self._cur is None: raise WavNoFileError
+                if v:
+                    name = v
+                else:
+                    name = self._cur.name+'.wav'
+                self.write(name, force=(c=='W'))
             elif c == 'p':
                 self.status()
                 self.play()
@@ -166,8 +188,25 @@ class WavEd(object):
                 self._cur.set_length(self._cur.parse(v))
                 self.status()
                 self.play()
+            elif c == 'C':
+                if self._cur is None: raise WavNoFileError
+                self._cur = self._cur.copy(v)
+                self._curs[v] = self._cur
+            elif c == 'R':
+                if self._cur is None: raise WavNoFileError
+                self._cur.name = v
+            elif c == 'J':
+                try:
+                    self._cur = self._curs[v]
+                except KeyError:
+                    raise WavEdError('Not found: %r' % v)
+                self.play()
+            elif c == 'L':
+                for k in sorted(self._curs.keys()):
+                    print self._curs[k]
             else:
                 print 'commands: q)uit, r)ead, w)rite, p)lay, s)tart, e)nd, l)ength'
+                print '          C)reate, J)ump, R)ename, L)ist'
         except WavNoFileError, e:
             print 'no file'
         except (WavEdError, IOError, ValueError), e:
