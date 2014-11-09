@@ -11,8 +11,8 @@ def bound(x,y,z): return max(x, min(y, z))
 
 class Cursor(object):
 
-    def __init__(self, maxlength):
-        self.maxlength = maxlength
+    def __init__(self, wav):
+        self._wav = wav
         self.start = 0
         self.end = 0
         self.length = None
@@ -26,6 +26,12 @@ class Cursor(object):
         else:
             return 'start %d length %d' % (self.start, self.length)
 
+    def parse(self, v):
+        if '.' in v:
+            return int(float(v)*self._wav.framerate)
+        else:
+            return int(v)
+
     def get_length(self):
         if self.end is not None:
             return (self.end - self.start)
@@ -33,19 +39,19 @@ class Cursor(object):
             return self.length
 
     def set_start(self, start):
-        self.start = bound(0, start, self.maxlength)
+        self.start = bound(0, start, self._wav.nframes)
         if self.length is not None:
-            self.length = bound(0, self.length, self.maxlength-self.start)
+            self.length = bound(0, self.length, self._wav.nframes-self.start)
         return
 
     def set_end(self, end):
-        self.end = bound(0, end, self.maxlength)
+        self.end = bound(0, end, self._wav.nframes)
         self.length = None
         return
 
     def set_length(self, length):
         self.end = None
-        self.length = bound(0, length, self.maxlength-self.start)
+        self.length = bound(0, length, self._wav.nframes-self.start)
         return
     
 class WavEd(object):
@@ -65,8 +71,8 @@ class WavEd(object):
     def read(self, path):
         self.close()
         self._wav = WaveReader(path)
-        self._cur = Cursor(self._wav.nframes)
-        self._cur.set_length(self._wav.framerate)
+        self._cur = Cursor(self._wav)
+        self._cur.set_length(self._cur.parse('1.0'))
         print ('Read: rate=%d, frames=%d, duration=%.3f' %
                (self._wav.framerate, self._wav.nframes,
                 self._wav.nframes/float(self._wav.framerate)))
@@ -111,13 +117,6 @@ class WavEd(object):
         print self._cur
         return
 
-    def _getv(self, v):
-        if self._wav is None: raise WavNoFileError
-        if '.' in v:
-            return int(float(v)*self._wav.framerate)
-        else:
-            return int(v)
-
     def run(self):
         self.command('p')
         while 1:
@@ -134,7 +133,8 @@ class WavEd(object):
     def command(self, s):
         try:
             if s[0].isdigit():
-                self._cur.set_start(self._getv(s))
+                if self._cur is None: raise WavNoFileError
+                self._cur.set_start(self._cur.parse(s))
                 self.status()
                 self.play()
                 return True
@@ -152,15 +152,18 @@ class WavEd(object):
                 self.status()
                 self.play()
             elif c == 's':
-                self._cur.set_start(self._getv(v))
+                if self._cur is None: raise WavNoFileError
+                self._cur.set_start(self._cur.parse(v))
                 self.status()
                 self.play()
             elif c == 'e':
-                self._cur.set_end(self._getv(v))
+                if self._cur is None: raise WavNoFileError
+                self._cur.set_end(self._cur.parse(v))
                 self.status()
                 self.play()
             elif c == 'l':
-                self._cur.set_length(self._getv(v))
+                if self._cur is None: raise WavNoFileError
+                self._cur.set_length(self._cur.parse(v))
                 self.status()
                 self.play()
             else:
