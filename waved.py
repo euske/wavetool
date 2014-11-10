@@ -2,15 +2,24 @@
 import sys
 import os.path
 import pygame
-from wavestream import WaveReader, WaveWriter, PygameWavePlayer
-
-class WavEdError(Exception): pass
-class WavNoFileError(WavEdError): pass
-class WavRangeError(WavEdError): pass
+from wavestream import WaveReader
+from wavestream import WaveWriter
+from wavestream import PygameWavePlayer
 
 def bound(x,y,z): return max(x, min(y, z))
 
-class Cursor(object):
+
+##  Exceptions
+##
+class WavEdError(Exception): pass
+class WavEdExit(WavEdError): pass
+class WavNoFileError(WavEdError): pass
+class WavRangeError(WavEdError): pass
+
+
+##  WavCursor
+##
+class WavCursor(object):
 
     def __init__(self, wav, name=None):
         self._wav = wav
@@ -23,7 +32,7 @@ class Cursor(object):
         return
 
     def copy(self, name):
-        cur = Cursor(self._wav, name)
+        cur = self.__class__(self._wav, name)
         cur.start = self.start
         cur.end = self.end
         cur.length = self.length
@@ -83,7 +92,10 @@ class Cursor(object):
         self.end = None
         self.length = bound(0, v, self._wav.nframes-self.start)
         return
-    
+
+
+##  WavEd
+##
 class WavEd(object):
 
     def __init__(self):
@@ -100,10 +112,15 @@ class WavEd(object):
             self._curs = {}
         return
 
+    def show(self):
+        if self._cur is None: raise WavNoFileError
+        print self._cur
+        return
+
     def read(self, path):
         self.close()
         self._wav = WaveReader(path)
-        self._cur = Cursor(self._wav)
+        self._cur = WavCursor(self._wav)
         self._cur.set_length('1.0')
         self._curs = {}
         print ('Read: rate=%d, frames=%d, duration=%.3f' %
@@ -143,96 +160,128 @@ class WavEd(object):
         player.close()
         return
 
-    def status(self):
-        if self._cur is None: raise WavNoFileError
-        print self._cur
-        return
-
     def run(self):
-        self.command('p')
+        self.exec_command('p')
         while 1:
             try:
                 s = raw_input('> ')
-            except EOFError:
+                pygame.mixer.stop()
+                s = s.strip()
+                if s:
+                    self.exec_command(s)
+            except (EOFError, WavEdExit):
                 break
-            pygame.mixer.stop()
-            s = s.strip()
-            if s:
-                if not self.command(s): break
         return
 
-    def command(self, s):
+    def show_help(self):
+        print 'commands: q)uit, r)ead, w)rite, p)lay, s)tart, e)nd, l)ength'
+        print '          C)reate, J)ump, R)ename, L)ist'
+        return
+    
+    def exec_command(self, s):
         try:
             if s[0].isdigit() or s[0] in '+-':
-                if self._cur is None: raise WavNoFileError
-                self._cur.set_start(s)
-                self.status()
-                self.play()
-                return True
-            c = s[0]
+                self.cmd_s(s)
+                return
+            c = 'cmd_'+s[0]
             v = s[1:].strip()
-            if c == 'q':
-                return False
-            elif c == 'r':
-                self.read(v)
-                self.status()
-                self.play()
-            elif c == 'w' or c == 'W':
-                if self._cur is None: raise WavNoFileError
-                if v:
-                    name = v
-                else:
-                    name = self._cur.name+'.wav'
-                self.write(name, force=(c=='W'))
-            elif c == 'p':
-                self.status()
-                self.play()
-            elif c == 's':
-                if self._cur is None: raise WavNoFileError
-                self._cur.set_start(v)
-                self.status()
-                self.play()
-            elif c == 'e':
-                if self._cur is None: raise WavNoFileError
-                self._cur.set_end(v)
-                self.status()
-                self.play()
-            elif c == 'l':
-                if self._cur is None: raise WavNoFileError
-                self._cur.set_length(v)
-                self.status()
-                self.play()
-            elif c == 'C':
-                if self._cur is None: raise WavNoFileError
-                self._cur = self._cur.copy(v)
-                self._curs[v] = self._cur
-            elif c == 'R':
-                if self._cur is None: raise WavNoFileError
-                self._cur.name = v
-            elif c == 'J':
-                try:
-                    self._cur = self._curs[v]
-                except KeyError:
-                    raise WavEdError('Not found: %r' % v)
-                self.play()
-            elif c == 'L':
-                for k in sorted(self._curs.keys()):
-                    print self._curs[k]
+            if hasattr(self, c):
+                getattr(self, c)(v)
             else:
-                print 'commands: q)uit, r)ead, w)rite, p)lay, s)tart, e)nd, l)ength'
-                print '          C)reate, J)ump, R)ename, L)ist'
+                self.show_help()
+        except WavEdExit, e:
+            raise
         except WavNoFileError, e:
             print 'no file'
         except WavRangeError, e:
             print 'invalid range'
         except (WavEdError, IOError, ValueError), e:
             print 'error:', e
-        return True
+        return
 
+    def cmd_q(self, v):
+        raise WavEdExit
+    def cmd_r(self, v):
+        self.read(v)
+        self.show()
+        self.play()
+        return
+    def cmd_W(self, v):
+        self.cmd_w(v, force=True)
+        return
+    def cmd_w(self, v, force=False):
+        if self._cur is None: raise WavNoFileError
+        if v:
+            name = v
+        else:
+            name = self._cur.name+'.wav'
+        self.write(name, force=force)
+        return
+    def cmd_p(self, v):
+        self.show()
+        self.play()
+        return
+    def cmd_s(self, v):
+        if self._cur is None: raise WavNoFileError
+        self._cur.set_start(v)
+        self.show()
+        self.play()
+        return
+    def cmd_e(self, v):
+        if self._cur is None: raise WavNoFileError
+        self._cur.set_end(v)
+        self.show()
+        self.play()
+        return
+    def cmd_l(self, v):
+        if self._cur is None: raise WavNoFileError
+        self._cur.set_length(v)
+        self.show()
+        self.play()
+        return
+    def cmd_C(self, v):
+        if self._cur is None: raise WavNoFileError
+        self._cur = self._cur.copy(v)
+        self._curs[v] = self._cur
+        return
+    def cmd_R(self, v):
+        if self._cur is None: raise WavNoFileError
+        self._cur.name = v
+        return
+    def cmd_J(self, v):
+        try:
+            self._cur = self._curs[v]
+        except KeyError:
+            raise WavEdError('Not found: %r' % v)
+        self.play()
+        return
+    def cmd_L(self, v):
+        if v:
+            try:
+                print self._curs[v]
+            except KeyError:
+                raise WavEdError('Not found: %r' % v)
+        else:
+            for k in sorted(self._curs.keys()):
+                print self._curs[k]
+        return
+
+# main
 def main(argv):
+    import getopt
     #pygame.mixer.pre_init(22050, -16, 1)
     pygame.mixer.init()
-    args = argv[1:]
+    def usage():
+        print 'usage: %s [-d] [-r ranges] [file ...]' % argv[0]
+        return 100
+    try:
+        (opts, args) = getopt.getopt(argv[1:], 'dr:')
+    except getopt.GetoptError:
+        return usage()
+    debug = 0
+    for (k, v) in opts:
+        if k == '-d': debug += 1
+        elif k == '-r': pass
     waved = WavEd()
     if args:
         waved.read(args.pop(0))
