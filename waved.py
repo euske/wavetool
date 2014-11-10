@@ -5,7 +5,8 @@ import pygame
 from wavestream import WaveReader, WaveWriter, PygameWavePlayer
 
 class WavEdError(Exception): pass
-class WavNoFileError(Exception): pass
+class WavNoFileError(WavEdError): pass
+class WavRangeError(WavEdError): pass
 
 def bound(x,y,z): return max(x, min(y, z))
 
@@ -30,42 +31,57 @@ class Cursor(object):
 
     def __repr__(self):
         if self.name is None:
-            if self.end is not None:
-                return 'start %d end %d' % (self.start, self.end)
-            else:
-                return 'start %d length %d' % (self.start, self.length)
+            name = ''
         else:
-            if self.end is not None:
-                return '%s: start %d end %d' % (self.name, self.start, self.end)
-            else:
-                return '%s: start %d length %d' % (self.name, self.start, self.length)
+            name = '%s: ' % self.name
+        if self.end is not None:
+            return '<%s%d-%d>' % (name, self.start, self.end)
+        else:
+            return '<%s%d+%d>' % (name, self.start, self.length)
 
-    def parse(self, v):
-        if '.' in v:
-            return int(float(v)*self._wav.framerate)
+    def _parse(self, v0, s):
+        rel = 0
+        if s.startswith('+'):
+            rel = +1
+            s = s[1:]
+        elif s.startswith('-'):
+            rel = -1
+            s = s[1:]
+        if '.' in s:
+            d = int(float(s)*self._wav.framerate)
         else:
-            return int(v)
+            d = int(s)
+        if rel:
+            if v0 is None: raise WavRangeError('no current value')
+            return v0+d*rel
+        else:
+            return d
 
     def get_length(self):
         if self.end is not None:
-            return (self.end - self.start)
+            v = (self.end - self.start)
         else:
-            return self.length
+            v = self.length
+        if v == 0: raise WavRangeError('empty range')
+        return v
 
-    def set_start(self, start):
-        self.start = bound(0, start, self._wav.nframes)
+    def set_start(self, s):
+        v = self._parse(self.start, s)
+        self.start = bound(0, v, self._wav.nframes)
         if self.length is not None:
             self.length = bound(0, self.length, self._wav.nframes-self.start)
         return
 
-    def set_end(self, end):
-        self.end = bound(0, end, self._wav.nframes)
+    def set_end(self, s):
+        v = self._parse(self.end, s)
+        self.end = bound(0, v, self._wav.nframes)
         self.length = None
         return
 
-    def set_length(self, length):
+    def set_length(self, s):
+        v = self._parse(self.length, s)
         self.end = None
-        self.length = bound(0, length, self._wav.nframes-self.start)
+        self.length = bound(0, v, self._wav.nframes-self.start)
         return
     
 class WavEd(object):
@@ -88,7 +104,7 @@ class WavEd(object):
         self.close()
         self._wav = WaveReader(path)
         self._cur = Cursor(self._wav)
-        self._cur.set_length(self._cur.parse('1.0'))
+        self._cur.set_length('1.0')
         self._curs = {}
         print ('Read: rate=%d, frames=%d, duration=%.3f' %
                (self._wav.framerate, self._wav.nframes,
@@ -100,8 +116,6 @@ class WavEd(object):
         if not force and os.path.exists(path):
             raise WavEdError('File exists: %r' % path)
         nframes = self._cur.get_length()
-        if nframes == 0:
-            raise WavEdError('Empty range')
         fp = open(path, 'wb')
         writer = WaveWriter(fp,
                             nchannels=self._wav.nchannels,
@@ -149,9 +163,9 @@ class WavEd(object):
 
     def command(self, s):
         try:
-            if s[0].isdigit():
+            if s[0].isdigit() or s[0] in '+-':
                 if self._cur is None: raise WavNoFileError
-                self._cur.set_start(self._cur.parse(s))
+                self._cur.set_start(s)
                 self.status()
                 self.play()
                 return True
@@ -175,17 +189,17 @@ class WavEd(object):
                 self.play()
             elif c == 's':
                 if self._cur is None: raise WavNoFileError
-                self._cur.set_start(self._cur.parse(v))
+                self._cur.set_start(v)
                 self.status()
                 self.play()
             elif c == 'e':
                 if self._cur is None: raise WavNoFileError
-                self._cur.set_end(self._cur.parse(v))
+                self._cur.set_end(v)
                 self.status()
                 self.play()
             elif c == 'l':
                 if self._cur is None: raise WavNoFileError
-                self._cur.set_length(self._cur.parse(v))
+                self._cur.set_length(v)
                 self.status()
                 self.play()
             elif c == 'C':
@@ -209,6 +223,8 @@ class WavEd(object):
                 print '          C)reate, J)ump, R)ename, L)ist'
         except WavNoFileError, e:
             print 'no file'
+        except WavRangeError, e:
+            print 'invalid range'
         except (WavEdError, IOError, ValueError), e:
             print 'error:', e
         return True
