@@ -21,11 +21,11 @@ class WavRangeError(WavEdError): pass
 ##
 class WavCursor(object):
 
-    def __init__(self, wav, name=None):
+    def __init__(self, wav, name=None, start=0, end=0):
         self._wav = wav
         self.name = name
-        self.start = 0
-        self.end = 0
+        self.start = start
+        self.end = end
         self.length = None
         assert ((self.end is not None and self.length is None) or
                 (self.end is None and self.length is not None))
@@ -37,6 +37,15 @@ class WavCursor(object):
         cur.end = self.end
         cur.length = self.length
         return cur
+
+    @classmethod
+    def fromstr(klass, wav, line):
+        (name,_,v) = line.partition(' ')
+        (s,_,e) = v.partition(' ')
+        return klass(wav, name, int(s), int(e))
+
+    def tostr(self):
+        return '%s %d %d' % (self.name, self.start, self.get_end())
 
     def __repr__(self):
         if self.name is None:
@@ -68,11 +77,17 @@ class WavCursor(object):
 
     def get_length(self):
         if self.end is not None:
-            v = (self.end - self.start)
+            v = self.end - self.start
         else:
             v = self.length
         if v == 0: raise WavRangeError('empty range')
         return v
+
+    def get_end(self):
+        if self.end is not None:
+            return self.end
+        else:
+            return self.start + self.length
 
     def set_start(self, s):
         v = self._parse(self.start, s)
@@ -112,11 +127,6 @@ class WavEd(object):
             self._curs = {}
         return
 
-    def show(self):
-        if self._cur is None: raise WavNoFileError
-        print self._cur
-        return
-
     def read(self, path):
         self.close()
         self._wav = WaveReader(path)
@@ -128,17 +138,16 @@ class WavEd(object):
                 self._wav.nframes/float(self._wav.framerate)))
         return
 
-    def write(self, path, force=False):
-        if self._cur is None: raise WavNoFileError
+    def write(self, cur, path, force=False):
         if not force and os.path.exists(path):
             raise WavEdError('File exists: %r' % path)
-        nframes = self._cur.get_length()
+        nframes = cur.get_length()
         fp = open(path, 'wb')
         writer = WaveWriter(fp,
                             nchannels=self._wav.nchannels,
                             sampwidth=self._wav.sampwidth,
                             framerate=self._wav.framerate)
-        self._wav.seek(self._cur.start)
+        self._wav.seek(cur.start)
         (_,data) = self._wav.readraw(nframes)
         writer.writeraw(data)
         writer.close()
@@ -148,16 +157,19 @@ class WavEd(object):
                 nframes/float(writer.framerate)))
         return
 
-    def play(self):
-        if self._cur is None: raise WavNoFileError
-        nframes = self._cur.get_length()
+    def play(self, cur):
+        nframes = cur.get_length()
         player = PygameWavePlayer(nchannels=self._wav.nchannels,
                                   sampwidth=self._wav.sampwidth,
                                   framerate=self._wav.framerate)
-        self._wav.seek(self._cur.start)
+        self._wav.seek(cur.start)
         (_,data) = self._wav.readraw(nframes)
         player.writeraw(data)
         player.close()
+        return
+
+    def show(self, cur):
+        print cur
         return
 
     def run(self):
@@ -175,7 +187,7 @@ class WavEd(object):
 
     def show_help(self):
         print 'commands: q)uit, r)ead, w)rite, p)lay, s)tart, e)nd, l)ength'
-        print '          C)reate, J)ump, R)ename, L)ist'
+        print '          C)reate, D)elete, R)ename, J)ump, L)ist, load, save, export'
         return
     
     def exec_command(self, s):
@@ -183,8 +195,9 @@ class WavEd(object):
             if s[0].isdigit() or s[0] in '+-':
                 self.cmd_s(s)
                 return
-            c = 'cmd_'+s[0]
-            v = s[1:].strip()
+
+            (c,_,v) = s.partition(' ')
+            c = 'cmd_'+c.replace('!','_f')
             if hasattr(self, c):
                 getattr(self, c)(v)
             else:
@@ -201,60 +214,80 @@ class WavEd(object):
 
     def cmd_q(self, v):
         raise WavEdExit
+    
     def cmd_r(self, v):
         self.read(v)
-        self.show()
-        self.play()
+        if self._cur is None: raise WavNoFileError
+        self.show(self._cur)
+        self.play(self._cur)
         return
-    def cmd_W(self, v):
+    
+    def cmd_w_f(self, v):
         self.cmd_w(v, force=True)
         return
+    
     def cmd_w(self, v, force=False):
         if self._cur is None: raise WavNoFileError
         if v:
             name = v
         else:
             name = self._cur.name+'.wav'
-        self.write(name, force=force)
+        self.write(self._cur, name, force=force)
         return
+    
     def cmd_p(self, v):
-        self.show()
-        self.play()
+        if self._cur is None: raise WavNoFileError
+        self.show(self._cur)
+        self.play(self._cur)
         return
+    
     def cmd_s(self, v):
         if self._cur is None: raise WavNoFileError
         self._cur.set_start(v)
-        self.show()
-        self.play()
+        self.show(self._cur)
+        self.play(self._cur)
         return
+    
     def cmd_e(self, v):
         if self._cur is None: raise WavNoFileError
         self._cur.set_end(v)
-        self.show()
-        self.play()
+        self.show(self._cur)
+        self.play(self._cur)
         return
+    
     def cmd_l(self, v):
         if self._cur is None: raise WavNoFileError
         self._cur.set_length(v)
-        self.show()
-        self.play()
+        self.show(self._cur)
+        self.play(self._cur)
         return
+    
     def cmd_C(self, v):
         if self._cur is None: raise WavNoFileError
         self._cur = self._cur.copy(v)
         self._curs[v] = self._cur
         return
+
+    def cmd_D(self, v):
+        try:
+            del self._curs[v]
+        except KeyError:
+            raise WavEdError('Not found: %r' % v)
+        return
+    
     def cmd_R(self, v):
         if self._cur is None: raise WavNoFileError
         self._cur.name = v
         return
+    
     def cmd_J(self, v):
         try:
             self._cur = self._curs[v]
         except KeyError:
             raise WavEdError('Not found: %r' % v)
-        self.play()
+        self.play(self._cur)
         return
+    
     def cmd_L(self, v):
         if v:
             try:
@@ -265,6 +298,33 @@ class WavEd(object):
             for k in sorted(self._curs.keys()):
                 print self._curs[k]
         return
+
+    def cmd_load(self, v):
+        if self._wav is None: raise WavNoFileError
+        fp = file(v, 'r')
+        for line in fp:
+            c = WavCursor.fromstr(self._wav, line.rstrip())
+            self._curs[c.name] = c
+        fp.close()
+        return
+    
+    def cmd_save(self, v):
+        fp = file(v, 'w')
+        for k in sorted(self._curs.keys()):
+            c = self._curs[k]
+            fp.write('%s\n' % c.tostr())
+        fp.close()
+        return
+
+    def cmd_export(self, v):
+        for k in sorted(self._curs.keys()):
+            c = self._curs[k]
+            try:
+                self.write(c, c.name+'.wav')
+            except WavEdError, e:
+                print e
+        return
+    
 
 # main
 def main(argv):
