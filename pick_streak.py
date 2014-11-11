@@ -2,7 +2,7 @@
 #
 # Streak picker
 #
-# usage: python pick.py [-w outer_window] [-W inner_window] wav pitch ...
+# usage: python pick.py [-b base_name] [-w outer_window] [-W inner_window] wav pitch ...
 #
 
 import sys
@@ -35,18 +35,20 @@ def pick_streaks(triggers, w0=0, w1=0):
 def main(argv):
     import getopt
     def usage():
-        print ('usage: %s '
+        print ('usage: %s [-b base_name]'
                ' [-w outer_window] [-W inner_window]'
                ' src.wav pitch ...' % argv[0])
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'w:W:')
+        (opts, args) = getopt.getopt(argv[1:], 'b:w:W:')
     except getopt.GetoptError:
         return usage()
+    base = 'out'
     window0 = 0.1
     window1 = 0.1
     for (k,v) in opts:
-        if k == '-w': window0 = float(v)
+        if k == '-b': base = v
+        elif k == '-w': window0 = float(v)
         elif k == '-W': window1 = float(v)
     if not args: return usage()
     wavpath = args.pop(0)
@@ -60,7 +62,7 @@ def main(argv):
         for (f0,f1) in pick_streaks(triggers, w0, w1):
             f0 = max(0, f0)
             f1 = min(f1, src.nframes)
-            print 's%04d %d %d' % (i, f0, f1)
+            print '%s%04d %d %d' % (base, i, f0, f1)
             i += 1
     return 0
 
