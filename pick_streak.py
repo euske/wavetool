@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 #
-# Sound picker
+# Streak picker
 #
-# usage: python pick.py [-b basepath] [-w outer_window] [-W inner_window] wav pitch ...
+# usage: python pick.py [-w outer_window] [-W inner_window] wav pitch ...
 #
 
 import sys
 from wavestream import WaveReader
-from wavestream import WaveWriter
 
 def load_pitch(path):
     fp = open(path)
@@ -20,7 +19,7 @@ def load_pitch(path):
     fp.close()
     return
 
-def pick_frames(triggers, w0=0, w1=0):
+def pick_streaks(triggers, w0=0, w1=0):
     (f0,f1) = (None,None)
     for t in triggers:
         if f1 is None:
@@ -36,20 +35,18 @@ def pick_frames(triggers, w0=0, w1=0):
 def main(argv):
     import getopt
     def usage():
-        print ('usage: %s [-b basepath]'
+        print ('usage: %s '
                ' [-w outer_window] [-W inner_window]'
                ' src.wav pitch ...' % argv[0])
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'b:w:W:')
+        (opts, args) = getopt.getopt(argv[1:], 'w:W:')
     except getopt.GetoptError:
         return usage()
-    basepath = 'out%05d.wav'
     window0 = 0.1
     window1 = 0.1
     for (k,v) in opts:
-        if k == '-b': basepath = v
-        elif k == '-w': window0 = float(v)
+        if k == '-w': window0 = float(v)
         elif k == '-W': window1 = float(v)
     if not args: return usage()
     wavpath = args.pop(0)
@@ -60,22 +57,10 @@ def main(argv):
     i = 0
     for path in args:
         triggers = ( t for (t,_) in load_pitch(path) )
-        for (f0,f1) in pick_frames(triggers, w0, w1):
+        for (f0,f1) in pick_streaks(triggers, w0, w1):
             f0 = max(0, f0)
             f1 = min(f1, src.nframes)
-            src.seek(f0)
-            (nframes, data) = src.readraw(f1-f0)
-            outpath = basepath % i
-            print outpath, (f0,f1)
-            out = open(outpath, 'wb')
-            dst = WaveWriter(out,
-                             nchannels=src.nchannels,
-                             sampwidth=src.sampwidth,
-                             framerate=src.framerate,
-                             nframes=nframes)
-            dst.writeraw(data)
-            dst.close()
-            out.close()
+            print 's%04d %d %d' % (i, f0, f1)
             i += 1
     return 0
 
