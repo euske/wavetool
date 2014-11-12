@@ -332,19 +332,20 @@ def main(argv):
     #pygame.mixer.pre_init(22050, -16, 1)
     pygame.mixer.init()
     def usage():
-        print 'usage: %s [-d] [-r ranges] [file ...]' % argv[0]
+        print 'usage: %s [-d] [file [ranges]]' % argv[0]
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'dr:')
+        (opts, args) = getopt.getopt(argv[1:], 'd')
     except getopt.GetoptError:
         return usage()
     debug = 0
     for (k, v) in opts:
         if k == '-d': debug += 1
-        elif k == '-r': pass
     waved = WavEd()
     if args:
         waved.read(args.pop(0))
+    for path in args:
+        waved.cmd_load(path)
     waved.run()
     waved.close()
     return
