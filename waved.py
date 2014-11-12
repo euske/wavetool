@@ -265,19 +265,31 @@ class WavEd(object):
     def cmd_C(self, v):
         if self._cur is None: raise WavNoFileError
         self._cur = self._cur.copy(v)
-        self._curs[v] = self._cur
+        self._curs[self._cur.name] = self._cur
         return
 
     def cmd_D(self, v):
-        try:
-            del self._curs[v]
-        except KeyError:
-            raise WavEdError('Not found: %r' % v)
+        if v:
+            try:
+                del self._curs[v]
+            except KeyError:
+                raise WavEdError('Not found: %r' % v)
+        else:
+            try:
+                del self._curs[self._cur.name]
+            except KeyError:
+                pass
+            self._cur = None
         return
     
     def cmd_R(self, v):
         if self._cur is None: raise WavNoFileError
+        try:
+            del self._curs[self._cur.name]
+        except KeyError:
+            pass
         self._cur.name = v
+        self._curs[self._cur.name] = self._cur
         return
     
     def cmd_J(self, v):
