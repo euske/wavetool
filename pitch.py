@@ -17,6 +17,7 @@ class PitchDetector(object):
         self.framerate = framerate
         self.wmin = (framerate/pitchmax)
         self.wmax = (framerate/pitchmin)
+        self.threshold = 0.1
         self.reset()
         return
 
@@ -31,9 +32,14 @@ class PitchDetector(object):
         i = 0
         n = self.wmin/2
         while i+self.wmax < self._nframes:
-            (dmax, mmax) = wavcorr.autocorrs16(self.wmin, self.wmax, self._buf, i)
-            mag = wavcorr.calcmags16(self._buf, i, dmax)
-            pitch = self.framerate/dmax
+            (dmax, mmax) = wavcorr.autocorrs16(
+                self.wmin, self.wmax, self.threshold,
+                self._buf, i)
+            if dmax:
+                mag = wavcorr.calcmags16(self._buf, i, dmax)
+                pitch = self.framerate/dmax
+            else:
+                mag = pitch = 0
             yield (n, mmax, mag, pitch, self._buf[i*2:(i+n)*2])
             i += n
         self._buf = self._buf[i*2:]

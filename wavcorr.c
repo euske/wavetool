@@ -138,19 +138,7 @@ int autocorrs16(double* sim, int window0, int window1, int length, const int16le
 	    }
 	}
     }
-
-    /* find the maximum similarity. */
-    int wmax = -1;
-    double smax = -1;
-    for (w = window0; w <= window1; w++) {
-	double s = sim[w-window0];
-	if (smax < s) {
-	    smax = s;
-	    wmax = w;
-	}
-    }
-  
-    return wmax;
+    return 0;
 }
 
 /* autosplices16: find the window that has the maximum similarity. */
@@ -217,8 +205,8 @@ static PyObject* pycalcsims16(PyObject* self, PyObject* args)
     int offset1;
     int offset2;
 
-    if (!PyArg_ParseTuple(args, "iOiOi", &window, 
-			  &data1, &offset1, &data2, &offset2)) {
+    if (!PyArg_ParseTuple(args, "iOiOi",
+			  &window, &data1, &offset1, &data2, &offset2)) {
 	return NULL;
     }
 
@@ -276,13 +264,33 @@ static PyObject* pycalcmags16(PyObject* self, PyObject* args)
 
 
 /* pyautocorrs16(window0, window1, data, offset); */
+typedef struct _corritem
+{
+    int i;
+    double sim;
+} corritem;
+
+static int cmp_corritem(const void* a, const void* b)
+{
+    double p = ((const corritem*)a)->sim;
+    double q = ((const corritem*)b)->sim;
+    if (p < q) {
+	return +1;
+    } else {
+	return -1;
+    }
+}
+
 static PyObject* pyautocorrs16(PyObject* self, PyObject* args)
 {
     int window0, window1;
+    double threshold;
     PyObject* data;
     int offset;
 
-    if (!PyArg_ParseTuple(args, "iiOi", &window0, &window1, &data, &offset)) {
+    if (!PyArg_ParseTuple(args, "iidOi",
+			  &window0, &window1,
+			  &threshold, &data, &offset)) {
 	return NULL;
     }
 
@@ -303,13 +311,40 @@ static PyObject* pyautocorrs16(PyObject* self, PyObject* args)
 	window1 = window0;
 	window0 = x;
     }
-    double* sim = (double*) PyMem_Malloc(sizeof(double)*(window1-window0+1));
-    if (sim == NULL) return PyErr_NoMemory();
-    int16le* seq = (int16le*)PyString_AsString(data);
-    int wmax = autocorrs16(sim, window0, window1, length-offset, &seq[offset]);
-    double smax = sim[wmax-window0];
-    PyMem_Free(sim);
+    
+    int wmax = 0;
+    double smax = 0;
   
+    size_t maxsize = window1-window0+1;
+    int16le* seq = (int16le*)PyString_AsString(data);
+    double* sim = (double*) PyMem_Malloc(sizeof(double)*maxsize);
+    if (sim == NULL) {
+	return PyErr_NoMemory();
+    } else {
+	autocorrs16(sim, window0, window1, length-offset, &seq[offset]);
+	corritem* items = (corritem*) PyMem_Malloc(sizeof(corritem)*maxsize);
+	if (items == NULL) {
+	    return PyErr_NoMemory();
+	} else {
+	    int i;
+	    size_t n = 0;
+	    for (i = 0; i < maxsize; i++) {
+		if (threshold < sim[i]) {
+		    items[n].i = i;
+		    items[n].sim = sim[i];
+		    n++;
+		}
+	    }
+	    if (n) {
+		qsort(items, n, sizeof(corritem), cmp_corritem);
+		wmax = items[0].i + window0;
+		smax = items[0].sim;
+	    }
+	    PyMem_Free(items);
+	}
+	PyMem_Free(sim);
+    }
+
     PyObject* tuple;
     {
 	PyObject* v1 = PyInt_FromLong(wmax);
@@ -330,7 +365,8 @@ static PyObject* pyautosplices16(PyObject* self, PyObject* args)
     PyObject* data1;
     PyObject* data2;
 
-    if (!PyArg_ParseTuple(args, "iiOO", &window0, &window1, &data1, &data2)) {
+    if (!PyArg_ParseTuple(args, "iiOO",
+			  &window0, &window1, &data1, &data2)) {
 	return NULL;
     }
 
