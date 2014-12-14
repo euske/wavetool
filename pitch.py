@@ -67,24 +67,34 @@ class PitchSmoother(object):
     def feed(self, n, pitches):
         pitches = [ (w,sim,mag) for (w,sim,mag) in pitches 
                     if self.threshold_sim < sim and self.threshold_mag < mag ]
+        sims = [ 0 for _ in self._threads ]
         for (w1,sim1,_) in pitches:
             taken = False
-            for (i,(w0,sim0,t0,_)) in enumerate(self._threads):
+            for (i,(w0,dt0,_)) in enumerate(self._threads):
                 if w0*self.ratio <= w1 and w1 <= w0/self.ratio:
-                    if sim0 < sim1:
-                        self._threads[i] = (w1, sim1, t0, self._t)
+                    if sims[i] < sim1:
+                        self._threads[i] = (w1, dt0, self._t)
+                        sims[i] = sim1
                     else:
-                        self._threads[i] = (w0, sim0, t0, self._t)
+                        self._threads[i] = (w0, dt0, self._t)
                     taken = True
             if not taken:
-                self._threads.append((w1, sim1, self._t, self._t))
-        self._threads = [ (w,sim,t0,t1) for (w,sim,t0,t1) in self._threads
-                          if (self._t-t1) < self.windowsize ]
-        r = sorted(( (sim, self.framerate/w) for (w,sim,t0,t1) in self._threads
-                     if self.windowsize < (self._t-t0) ),
-                   reverse=True)
-        yield (n, r)
+                self._threads.append((w1, 0, self._t))
+                sims.append(sim1)
+        threads = []
+        r = []
+        for (sim,(w,dt,t)) in zip(sims, self._threads):
+            if self.windowsize <= (self._t-t):
+                continue
+            elif self.windowsize/2 < dt:
+                r.append((sim, self.framerate/w))
+            if sim:
+                threads.append((w,dt+n,t))
+            else:
+                threads.append((w,dt-n,t))
+        self._threads = threads
         self._t += n
+        yield (n, sorted(r, reverse=True))
         return
 
 
@@ -139,8 +149,7 @@ def main(argv):
                     print ('# %d: %r' % (i, pitches))
                 for (n,spitch) in smoother.feed(n, pitches):
                     if spitch:
-                        (sim,pitch) = spitch[0]
-                        print i, pitch
+                        print i, ' '.join( repr(pitch) for (sim,pitch) in spitch )
                         skip = False
                     else:
                         if not skip:
