@@ -13,11 +13,14 @@ import wavcorr
 ##
 class PitchDetector(object):
 
-    def __init__(self, framerate, pitchmin=70, pitchmax=400):
+    def __init__(self, framerate,
+                 pitchmin=70, pitchmax=400,
+                 threshold=0.75, maxitems=10):
         self.framerate = framerate
         self.wmin = (framerate/pitchmax)
         self.wmax = (framerate/pitchmin)
-        self.threshold = 0.1
+        self.threshold = threshold
+        self.maxitems = maxitems
         self.reset()
         return
 
@@ -32,15 +35,13 @@ class PitchDetector(object):
         i = 0
         n = self.wmin/2
         while i+self.wmax < self._nframes:
-            (dmax, mmax) = wavcorr.autocorrs16(
-                self.wmin, self.wmax, self.threshold,
+            r = wavcorr.autocorrs16(
+                self.wmin, self.wmax,
+                self.threshold, self.maxitems,
                 self._buf, i)
-            if dmax:
-                mag = wavcorr.calcmags16(self._buf, i, dmax)
-                pitch = self.framerate/dmax
-            else:
-                mag = pitch = 0
-            yield (n, mmax, mag, pitch, self._buf[i*2:(i+n)*2])
+            r = [ (w, sim, wavcorr.calcmags16(self._buf, i, w))
+                  for (w,sim) in r ]
+            yield (n, r, self._buf[i*2:(i+n)*2])
             i += n
         self._buf = self._buf[i*2:]
         self._nframes -= i
@@ -51,31 +52,39 @@ class PitchDetector(object):
 ##
 class PitchSmoother(object):
 
-    def __init__(self, framerate,
-                 pitchmin=70, 
+    def __init__(self, framerate, windowsize, 
                  threshold_sim=0.75,
                  threshold_mag=0.025):
         self.framerate = framerate
+        self.windowsize = windowsize
         self.threshold_sim = threshold_sim
         self.threshold_mag = threshold_mag
-        self.windowsize = 2*(framerate/pitchmin)
-        self._samples = []
-        self._nsamples = 0
+        self.ratio = 0.9
+        self._threads = []
+        self._t = 0
         return
 
-    def feed(self, n, sim, mag, pitch):
-        self._samples.append((n, sim, mag, pitch))
-        self._nsamples += n
-        p = [ pitch for (_,sim,mag,pitch) in self._samples
-              if self.threshold_sim < sim and self.threshold_mag < mag ]
-        if p:
-            pitch = sum(p)/len(p)
-        else:
-            pitch = 0
-        yield (n, pitch)
-        while self.windowsize <= self._nsamples:
-            (n,sim,freq,mag) = self._samples.pop(0)
-            self._nsamples -= n
+    def feed(self, n, pitches):
+        pitches = [ (w,sim,mag) for (w,sim,mag) in pitches 
+                    if self.threshold_sim < sim and self.threshold_mag < mag ]
+        for (w1,sim1,_) in pitches:
+            taken = False
+            for (i,(w0,sim0,t0,_)) in enumerate(self._threads):
+                if w0*self.ratio <= w1 and w1 <= w0/self.ratio:
+                    if sim0 < sim1:
+                        self._threads[i] = (w1, sim1, t0, self._t)
+                    else:
+                        self._threads[i] = (w0, sim0, t0, self._t)
+                    taken = True
+            if not taken:
+                self._threads.append((w1, sim1, self._t, self._t))
+        self._threads = [ (w,sim,t0,t1) for (w,sim,t0,t1) in self._threads
+                          if (self._t-t1) < self.windowsize ]
+        r = sorted(( (sim, self.framerate/w) for (w,sim,t0,t1) in self._threads
+                     if self.windowsize < (self._t-t0) ),
+                   reverse=True)
+        yield (n, r)
+        self._t += n
         return
 
 
@@ -113,9 +122,10 @@ def main(argv):
         if src.sampwidth != 2: raise ValueError('invalid sampling width')
         if detector is None:
             detector = PitchDetector(src.framerate,
-                                     pitchmin=pitchmin, pitchmax=pitchmax)
+                                     pitchmin=pitchmin, pitchmax=pitchmax,
+                                     threshold=threshold_sim)
             smoother = PitchSmoother(src.framerate,
-                                     pitchmin=pitchmin,
+                                     windowsize=2*src.framerate/pitchmin,
                                      threshold_sim=threshold_sim,
                                      threshold_mag=threshold_mag)
         i = 0
@@ -123,14 +133,14 @@ def main(argv):
         while 1:
             (nframes,buf) = src.readraw(bufsize)
             if not nframes: break
-            pitches = detector.feed(buf, nframes)
-            for (n,sim,mag,pitch,data) in pitches:
+            seq = detector.feed(buf, nframes)
+            for (n,pitches,data) in seq:
                 if debug:
-                    print ('# %d-%d: %.3f %.3f %d' %
-                           (i, i+src.framerate/pitch, sim, mag, pitch))
-                for (n,spitch) in smoother.feed(n, sim, mag, pitch):
+                    print ('# %d: %r' % (i, pitches))
+                for (n,spitch) in smoother.feed(n, pitches):
                     if spitch:
-                        print i, spitch
+                        (sim,pitch) = spitch[0]
+                        print i, pitch
                         skip = False
                     else:
                         if not skip:

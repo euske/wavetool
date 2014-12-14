@@ -266,7 +266,7 @@ static PyObject* pycalcmags16(PyObject* self, PyObject* args)
 /* pyautocorrs16(window0, window1, data, offset); */
 typedef struct _corritem
 {
-    int i;
+    int dw;
     double sim;
 } corritem;
 
@@ -283,14 +283,15 @@ static int cmp_corritem(const void* a, const void* b)
 
 static PyObject* pyautocorrs16(PyObject* self, PyObject* args)
 {
-    int window0, window1;
+    int window0, window1, maxitems;
     double threshold;
     PyObject* data;
     int offset;
 
-    if (!PyArg_ParseTuple(args, "iidOi",
+    if (!PyArg_ParseTuple(args, "iidiOi",
 			  &window0, &window1,
-			  &threshold, &data, &offset)) {
+			  &threshold, &maxitems,
+			  &data, &offset)) {
 	return NULL;
     }
 
@@ -312,49 +313,50 @@ static PyObject* pyautocorrs16(PyObject* self, PyObject* args)
 	window0 = x;
     }
     
-    int wmax = 0;
-    double smax = 0;
+    PyObject* result = NULL;
   
-    size_t maxsize = window1-window0+1;
+    size_t wmax = window1-window0+1;
     int16le* seq = (int16le*)PyString_AsString(data);
-    double* sim = (double*) PyMem_Malloc(sizeof(double)*maxsize);
+    double* sim = (double*) PyMem_Malloc(sizeof(double)*wmax);
     if (sim == NULL) {
 	return PyErr_NoMemory();
     } else {
 	autocorrs16(sim, window0, window1, length-offset, &seq[offset]);
-	corritem* items = (corritem*) PyMem_Malloc(sizeof(corritem)*maxsize);
+	corritem* items = (corritem*) PyMem_Malloc(sizeof(corritem)*wmax);
 	if (items == NULL) {
 	    return PyErr_NoMemory();
 	} else {
 	    int i;
 	    size_t n = 0;
-	    for (i = 0; i < maxsize; i++) {
+	    for (i = 0; i < wmax; i++) {
 		if (threshold < sim[i]) {
-		    items[n].i = i;
+		    items[n].dw = i;
 		    items[n].sim = sim[i];
 		    n++;
 		}
 	    }
 	    if (n) {
 		qsort(items, n, sizeof(corritem), cmp_corritem);
-		wmax = items[0].i + window0;
-		smax = items[0].sim;
+		n = min(n, maxitems);
+		result = PyList_New(n);
+		for (i = 0; i < n; i++) {
+		    PyObject* v1 = PyInt_FromLong(items[i].dw + window0);
+		    PyObject* v2 = PyFloat_FromDouble(items[i].sim);
+		    PyObject* tuple = PyTuple_Pack(2, v1, v2);
+		    PyList_SetItem(result, i, tuple);
+		    Py_DECREF(v1);
+		    Py_DECREF(v2);
+		}
 	    }
 	    PyMem_Free(items);
 	}
 	PyMem_Free(sim);
     }
 
-    PyObject* tuple;
-    {
-	PyObject* v1 = PyInt_FromLong(wmax);
-	PyObject* v2 = PyFloat_FromDouble(smax);
-	tuple = PyTuple_Pack(2, v1, v2);
-	Py_DECREF(v1);
-	Py_DECREF(v2);
+    if (result == NULL) {
+	result = PyList_New(0);
     }
-
-    return tuple;
+    return result;
 }
 
 
