@@ -274,7 +274,9 @@ static int cmp_corritem(const void* a, const void* b)
 {
     double p = ((const corritem*)a)->sim;
     double q = ((const corritem*)b)->sim;
-    if (p < q) {
+    if (p == q) {
+	return 0;
+    } else if (p < q) {
 	return +1;
     } else {
 	return -1;

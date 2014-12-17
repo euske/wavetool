@@ -26,25 +26,23 @@ class PitchDetector(object):
 
     def reset(self):
         self._buf = ''
-        self._nframes = 0
         return
     
     def feed(self, buf, nframes):
         self._buf += buf
-        self._nframes += nframes
+        bufmax = len(self._buf)/2 - self.wmax*2
+        step = self.wmin/2
         i = 0
-        n = self.wmin/2
-        while i+self.wmax < self._nframes:
+        while i < bufmax:
             r = wavcorr.autocorrs16(
                 self.wmin, self.wmax,
                 self.threshold, self.maxitems,
                 self._buf, i)
             r = [ (w, sim, wavcorr.calcmags16(self._buf, i, w))
                   for (w,sim) in r ]
-            yield (n, r, self._buf[i*2:(i+n)*2])
-            i += n
+            yield (step, r, self._buf[i*2:(i+step)*2])
+            i += step
         self._buf = self._buf[i*2:]
-        self._nframes -= i
         return
 
 
@@ -84,9 +82,9 @@ class PitchSmoother(object):
         threads = []
         r = []
         for (sim,(w,dt,t)) in zip(sims, self._threads):
-            if self.windowsize <= (self._t-t):
+            if self.windowsize*2 <= (self._t-t):
                 continue
-            elif self.windowsize/2 < dt:
+            elif self.windowsize < dt:
                 r.append((sim, self.framerate/w))
             if sim:
                 threads.append((w,dt+n,t))
@@ -150,7 +148,7 @@ def main(argv):
                                      pitchmin=pitchmin, pitchmax=pitchmax,
                                      threshold=threshold_sim)
             smoother = PitchSmoother(src.framerate,
-                                     windowsize=2*src.framerate/pitchmin,
+                                     windowsize=src.framerate/pitchmax,
                                      threshold_sim=threshold_sim,
                                      threshold_mag=threshold_mag)
         for (b,e) in ranges:
