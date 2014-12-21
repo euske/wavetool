@@ -15,11 +15,11 @@ class PitchDetector(object):
 
     def __init__(self, framerate,
                  pitchmin=70, pitchmax=400,
-                 threshold=0.75, maxitems=10):
+                 threshold_sim=0.75, maxitems=10):
         self.framerate = framerate
         self.wmin = (framerate/pitchmax)
         self.wmax = (framerate/pitchmin)
-        self.threshold = threshold
+        self.threshold_sim = threshold_sim
         self.maxitems = maxitems
         self.reset()
         return
@@ -36,7 +36,7 @@ class PitchDetector(object):
         while i < bufmax:
             r = wavcorr.autocorrs16(
                 self.wmin, self.wmax,
-                self.threshold, self.maxitems,
+                self.threshold_sim, self.maxitems,
                 self._buf, i)
             r = [ (w, sim, wavcorr.calcmags16(self._buf, i, w))
                   for (w,sim) in r ]
@@ -58,39 +58,31 @@ class PitchSmoother(object):
         self.threshold_sim = threshold_sim
         self.threshold_mag = threshold_mag
         self.ratio = 0.9
-        self._threads = []
+        self._threads = []  # [(w0,t0), (w1,t1), ...]
         self._t = 0
         return
 
     def feed(self, n, pitches):
         pitches = [ (w,sim,mag) for (w,sim,mag) in pitches 
                     if self.threshold_sim < sim and self.threshold_mag < mag ]
-        sims = [ 0 for _ in self._threads ]
+        threads = [ (w,0,t) for (w,t) in self._threads ]
         for (w1,sim1,_) in pitches:
             taken = False
-            for (i,(w0,dt0,_)) in enumerate(self._threads):
+            for (i,(w0,sim0,_)) in enumerate(threads):
                 if w0*self.ratio <= w1 and w1 <= w0/self.ratio:
-                    if sims[i] < sim1:
-                        self._threads[i] = (w1, dt0, self._t)
-                        sims[i] = sim1
-                    else:
-                        self._threads[i] = (w0, dt0, self._t)
+                    if sim0 < sim1:
+                        threads[i] = (w1, sim1, self._t)
                     taken = True
             if not taken:
-                self._threads.append((w1, 0, self._t))
-                sims.append(sim1)
-        threads = []
+                threads.append((w1, sim1, self._t))
+        self._threads = []
         r = []
-        for (sim,(w,dt,t)) in zip(sims, self._threads):
-            if self.windowsize*2 <= (self._t-t):
+        for (w,sim,t) in threads:
+            if self.windowsize <= (self._t-t):
                 continue
-            elif self.windowsize < dt:
-                r.append((sim, self.framerate/w))
-            if sim:
-                threads.append((w,dt+n,t))
             else:
-                threads.append((w,dt-n,t))
-        self._threads = threads
+                r.append((sim, self.framerate/w))
+            self._threads.append((w,t))
         self._t += n
         yield (n, sorted(r, reverse=True))
         return
@@ -101,7 +93,8 @@ def main(argv):
     import getopt
     from wavestream import WaveReader
     def usage():
-        print 'usage: %s [-d] [-M|-F] [-n pitchmin] [-m pitchmax] [-T threshold_sim] [-S threshold_mag] wav ...' % argv[0]
+        print ('usage: %s [-d] [-M|-F] [-n pitchmin] [-m pitchmax]'
+               ' [-T threshold_sim] [-S threshold_mag] wav ...' % argv[0])
         return 100
     def parse_range(x):
         (b,_,e) = x.partition('-')
@@ -146,9 +139,9 @@ def main(argv):
         if detector is None:
             detector = PitchDetector(src.framerate,
                                      pitchmin=pitchmin, pitchmax=pitchmax,
-                                     threshold=threshold_sim)
+                                     threshold_sim=threshold_sim)
             smoother = PitchSmoother(src.framerate,
-                                     windowsize=src.framerate/pitchmax,
+                                     windowsize=2*src.framerate/pitchmin,
                                      threshold_sim=threshold_sim,
                                      threshold_mag=threshold_mag)
         for (b,e) in ranges:
