@@ -13,12 +13,11 @@ import wavcorr
 ##
 class PitchDetector(object):
 
-    def __init__(self, framerate,
-                 pitchmin=70, pitchmax=400,
+    def __init__(self, 
+                 wmin=100, wmax=600,
                  threshold_sim=0.75, maxitems=10):
-        self.framerate = framerate
-        self.wmin = (framerate/pitchmax)
-        self.wmax = (framerate/pitchmin)
+        self.wmin = wmin
+        self.wmax = wmax
         self.threshold_sim = threshold_sim
         self.maxitems = maxitems
         self.reset()
@@ -50,15 +49,15 @@ class PitchDetector(object):
 ##
 class PitchSmoother(object):
 
-    def __init__(self, framerate, windowsize, 
+    def __init__(self, windowsize, 
                  threshold_sim=0.75,
                  threshold_mag=0.025):
-        self.framerate = framerate
         self.windowsize = windowsize
         self.threshold_sim = threshold_sim
         self.threshold_mag = threshold_mag
         self.ratio = 0.9
         self._threads = []  # [(w0,t0), (w1,t1), ...]
+        self._streak = []
         self._t = 0
         return
 
@@ -81,10 +80,15 @@ class PitchSmoother(object):
             if self.windowsize <= (self._t-t):
                 continue
             else:
-                r.append((sim, self.framerate/w))
+                r.append((sim, w))
             self._threads.append((w,t))
         self._t += n
-        yield (n, sorted(r, reverse=True))
+        if r:
+            r.sort(reverse=True)
+            self._streak.append((n,r))
+        elif self._streak:
+            yield self._streak
+            self._streak = []
         return
 
 
@@ -136,12 +140,12 @@ def main(argv):
         src = WaveReader(path)
         if src.nchannels != 1: raise ValueError('invalid number of channels')
         if src.sampwidth != 2: raise ValueError('invalid sampling width')
+        framerate = src.framerate
         if detector is None:
-            detector = PitchDetector(src.framerate,
-                                     pitchmin=pitchmin, pitchmax=pitchmax,
+            detector = PitchDetector(wmin=framerate/pitchmax,
+                                     wmax=framerate/pitchmin,
                                      threshold_sim=threshold_sim)
-            smoother = PitchSmoother(src.framerate,
-                                     windowsize=2*src.framerate/pitchmin,
+            smoother = PitchSmoother(2*framerate/pitchmin,
                                      threshold_sim=threshold_sim,
                                      threshold_mag=threshold_mag)
         for (b,e) in ranges:
@@ -149,25 +153,23 @@ def main(argv):
                 e = src.nframes
             src.seek(b)
             length = e-b
-            i = b
-            skip = True
+            i0 = b
             while length:
                 (nframes,buf) = src.readraw(min(bufsize, length))
                 if not nframes: break
                 length -= nframes
                 seq = detector.feed(buf, nframes)
-                for (n,pitches,data) in seq:
+                for (n0,pitches,data) in seq:
                     if debug:
                         print ('# %d: %r' % (i, pitches))
-                    for (n,spitch) in smoother.feed(n, pitches):
-                        if spitch:
-                            print i, ' '.join( repr(pitch) for (sim,pitch) in spitch )
-                            skip = False
-                        else:
-                            if not skip:
-                                print
-                                skip = True
-                        i += n
+                    for streak in smoother.feed(n0, pitches):
+                        i1 = 0
+                        for (n1,spitches) in streak:
+                            print i0+i1, ' '.join( '%.4f:%.4f' % (framerate/float(w), sim)
+                                                   for (sim,w) in spitches )
+                            i1 += n1
+                        print
+                    i0 += n0
         src.close()
     return
 
