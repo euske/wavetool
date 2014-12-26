@@ -58,10 +58,9 @@ class PitchSmoother(object):
         self.ratio = 0.9
         self._threads = []  # [(w0,t0), (w1,t1), ...]
         self._streak = []
-        self._t = 0
         return
 
-    def feed(self, n, pitches):
+    def feed(self, bt, n, pitches):
         pitches = [ (w,sim,mag) for (w,sim,mag) in pitches 
                     if self.threshold_sim < sim and self.threshold_mag < mag ]
         threads = [ (w,0,t) for (w,t) in self._threads ]
@@ -70,22 +69,21 @@ class PitchSmoother(object):
             for (i,(w0,sim0,_)) in enumerate(threads):
                 if w0*self.ratio <= w1 and w1 <= w0/self.ratio:
                     if sim0 < sim1:
-                        threads[i] = (w1, sim1, self._t)
+                        threads[i] = (w1, sim1, bt)
                     taken = True
             if not taken:
-                threads.append((w1, sim1, self._t))
+                threads.append((w1, sim1, bt))
         self._threads = []
         r = []
         for (w,sim,t) in threads:
-            if self.windowsize <= (self._t-t):
+            if self.windowsize <= (bt-t):
                 continue
             else:
                 r.append((sim, w))
             self._threads.append((w,t))
-        self._t += n
         if r:
             r.sort(reverse=True)
-            self._streak.append((n,r))
+            self._streak.append((bt,n,r))
         elif self._streak:
             yield self._streak
             self._streak = []
@@ -161,13 +159,11 @@ def main(argv):
                 seq = detector.feed(buf, nframes)
                 for (n0,pitches,data) in seq:
                     if debug:
-                        print ('# %d: %r' % (i, pitches))
-                    for streak in smoother.feed(n0, pitches):
-                        i1 = 0
-                        for (n1,spitches) in streak:
-                            print i0+i1, ' '.join( '%.4f:%.4f' % (framerate/float(w), sim)
-                                                   for (sim,w) in spitches )
-                            i1 += n1
+                        print ('# %d: %r' % (n0, pitches))
+                    for streak in smoother.feed(i0, n0, pitches):
+                        for (i1,n1,spitches) in streak:
+                            print i1, n1, ' '.join( '%.4f:%.4f' % (framerate/float(w), sim)
+                                                    for (sim,w) in spitches )
                         print
                     i0 += n0
         src.close()
