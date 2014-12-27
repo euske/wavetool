@@ -51,36 +51,38 @@ class PitchSmoother(object):
 
     def __init__(self, windowsize, 
                  threshold_sim=0.75,
-                 threshold_mag=0.025):
+                 threshold_mag=0.025,
+                 pitch_ratio=1.2):
         self.windowsize = windowsize
         self.threshold_sim = threshold_sim
         self.threshold_mag = threshold_mag
-        self.ratio = 0.9
-        self._threads = []  # [(w0,t0), (w1,t1), ...]
+        self.pitch_ratio = pitch_ratio
+        self._threads = []  # [(w0,score0,t0), (w1,score1,t1), ...]
         self._streak = []
         return
 
     def feed(self, bt, n, pitches):
         pitches = [ (w,sim,mag) for (w,sim,mag) in pitches 
                     if self.threshold_sim < sim and self.threshold_mag < mag ]
-        threads = [ (w,0,t) for (w,t) in self._threads ]
+        threads = [ (w,0,score,t) for (w,score,t) in self._threads ]
         for (w1,sim1,_) in pitches:
             taken = False
-            for (i,(w0,sim0,_)) in enumerate(threads):
-                if w0*self.ratio <= w1 and w1 <= w0/self.ratio:
+            for (i,(w0,sim0,score,_)) in enumerate(threads):
+                if w1 <= w0*self.pitch_ratio and w0 <= w1*self.pitch_ratio:
                     if sim0 < sim1:
-                        threads[i] = (w1, sim1, bt)
+                        threads[i] = (w1, sim1, score, bt)
                     taken = True
             if not taken:
-                threads.append((w1, sim1, bt))
+                threads.append((w1, sim1, 0, bt))
         self._threads = []
         r = []
-        for (w,sim,t) in threads:
+        for (w,sim,score,t) in threads:
+            score += sim
             if self.windowsize <= (bt-t):
                 continue
             else:
-                r.append((sim, w))
-            self._threads.append((w,t))
+                r.append((score, w))
+            self._threads.append((w,score,t))
         if r:
             r.sort(reverse=True)
             self._streak.append((bt,n,r))
@@ -162,7 +164,7 @@ def main(argv):
                         print ('# %d: %r' % (n0, pitches))
                     for streak in smoother.feed(i0, n0, pitches):
                         for (i1,n1,spitches) in streak:
-                            print i1, n1, ' '.join( '%.4f:%.4f' % (framerate/float(w), sim)
+                            print i1, n1, ' '.join( '%d:%.4f' % (w, sim)
                                                     for (sim,w) in spitches )
                         print
                     i0 += n0
