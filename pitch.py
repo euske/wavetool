@@ -64,25 +64,27 @@ class PitchSmoother(object):
     def feed(self, bt, n, pitches):
         pitches = [ (w,sim,mag) for (w,sim,mag) in pitches 
                     if self.threshold_sim < sim and self.threshold_mag < mag ]
-        threads = [ (w,0,score,t) for (w,score,t) in self._threads ]
-        for (w1,sim1,_) in pitches:
-            taken = False
-            for (i,(w0,sim0,score,_)) in enumerate(threads):
-                if w1 <= w0*self.pitch_ratio and w0 <= w1*self.pitch_ratio:
-                    if sim0 < sim1:
-                        threads[i] = (w1, sim1, score, bt)
-                    taken = True
-            if not taken:
-                threads.append((w1, sim1, 0, bt))
+        threads = ([ (w,0,score,t) for (w,score,t) in self._threads ] +
+                   [ (w,sim,0,bt) for (w,sim,_) in pitches ])
         self._threads = []
         r = []
-        for (w,sim,score,t) in threads:
-            score += sim
-            if self.windowsize <= (bt-t):
-                continue
-            else:
-                r.append((score, w))
-            self._threads.append((w,score,t))
+        for (i,(w0,sim0,score0,t0)) in enumerate(threads):
+            i += 1
+            while i < len(threads):
+                (w1,sim1,score1,t1) = threads[i]
+                if w1 <= w0*self.pitch_ratio and w0 <= w1*self.pitch_ratio:
+                    if sim0 < sim1:
+                        w0 = w1
+                    sim0 = max(sim0, sim1)
+                    score0 = max(score0, score1)
+                    t0 = max(t0, t1)
+                    del threads[i]
+                else:
+                    i += 1
+            if (bt-t0) < self.windowsize:
+                score0 += sim0
+                self._threads.append((w0,score0,t0))
+                r.append((score0, w0, sim0))
         if r:
             r.sort(reverse=True)
             self._streak.append((bt,n,r))
@@ -165,7 +167,7 @@ def main(argv):
                     for streak in smoother.feed(i0, n0, pitches):
                         for (i1,n1,spitches) in streak:
                             print i1, n1, ' '.join( '%d:%.4f' % (w, sim)
-                                                    for (sim,w) in spitches )
+                                                    for (_,w,sim) in spitches )
                         print
                     i0 += n0
         src.close()
