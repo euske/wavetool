@@ -140,17 +140,28 @@ class CommandWavePlayer(object):
             self.ratio = 32767.0
             self.arraytype = 'h'
         cmdline = player+('-c',str(nchannels),'-r',str(framerate),'-f',fmt)
-        self._process = subprocess.Popen(cmdline, stdin=subprocess.PIPE)
+        self.nchannels = nchannels
+        self.sampwidth = sampwidth
+        self.framerate = framerate
+        self._process = subprocess.Popen(
+            cmdline, stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self._process.stdout.close()
+        self._process.stderr.close()
         self._nframeswritten = 0
         return
 
     def wait(self):
-        self._process.wait()
+        if self._process is not None:
+            self._process.wait()
         return
 
-    def close(self):
-        self._process.stdin.close()
-        self._process = None
+    def stop(self):
+        if self._process is not None:
+            self._process.stdin.close()
+            self._process.terminate()
+            self._process.wait()
+            self._process = None
         return
     
     def tell(self):
@@ -159,8 +170,19 @@ class CommandWavePlayer(object):
     def write(self, frames):
         data = [ int(x*self.ratio) for x in frames ]
         data = array.array(self.arraytype, data)
-        self._process.stdin.write(data.tostring())
-        self._nframeswritten += len(frames)
+        self.writeraw(data.tostring())
+        return
+
+    def writeraw(self, bytes):
+        if self._process is not None:
+            self._process.stdin.write(bytes)
+            nframes = len(bytes) / (self.sampwidth*self.nchannels)
+            self._nframeswritten += nframes
+        return
+    
+    def flush(self):
+        if self._process is not None:
+            self._process.stdin.flush()
         return
 
 
@@ -174,20 +196,21 @@ class PygameWavePlayer(WaveWriter):
         from cStringIO import StringIO
         fp = StringIO()
         pygame.mixer.init()
-        self.sound = None
         WaveWriter.__init__(self, fp, nchannels, sampwidth, framerate, nframes)
+        self._channel = None
         return
 
-    def close(self):
+    def stop(self):
+        if self._channel is not None:
+            self._channel.stop()
+            self._channel = None
+        return
+
+    def flush(self):
         import pygame
         from cStringIO import StringIO
-        WaveWriter.close(self)
+        self.close()
         fp = StringIO(self.fp.getvalue())
-        self.sound = pygame.mixer.Sound(fp)
-        self.play()
-        return
-
-    def play(self):
-        if self.sound is not None:
-            self.sound.play()
+        sound = pygame.mixer.Sound(fp)
+        self._channel = sound.play()
         return

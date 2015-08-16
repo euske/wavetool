@@ -4,7 +4,11 @@ import os.path
 import pygame
 from wavestream import WaveReader
 from wavestream import WaveWriter
-from wavestream import PygameWavePlayer
+try:
+    import pygame
+    from wavestream import PygameWavePlayer as WavePlayer
+except ImportError:
+    from wavestream import CommandWavePlayer as WavePlayer
 
 def bound(x,y,z): return max(x, min(y, z))
 
@@ -117,9 +121,17 @@ class WavEd(object):
         self._wav = None
         self._cur = None
         self._curs = {}
+        self._player = None
+        return
+
+    def stop(self):
+        if self._player is not None:
+            self._player.stop()
+            self._player = None
         return
 
     def close(self):
+        self.stop()
         if self._wav is not None:
             self._wav.close()
             self._wav = None
@@ -159,13 +171,14 @@ class WavEd(object):
 
     def play(self, cur):
         nframes = cur.get_length()
-        player = PygameWavePlayer(nchannels=self._wav.nchannels,
+        self.stop()
+        self._player = WavePlayer(nchannels=self._wav.nchannels,
                                   sampwidth=self._wav.sampwidth,
                                   framerate=self._wav.framerate)
         self._wav.seek(cur.start)
         (_,data) = self._wav.readraw(nframes)
-        player.writeraw(data)
-        player.close()
+        self._player.writeraw(data)
+        self._player.flush()
         return
 
     def show(self, cur):
@@ -177,7 +190,7 @@ class WavEd(object):
         while 1:
             try:
                 s = raw_input('> ')
-                pygame.mixer.stop()
+                self.stop()
                 s = s.strip()
                 if s:
                     self.exec_command(s)
