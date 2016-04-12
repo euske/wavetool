@@ -77,11 +77,6 @@ class WaveGenerator(object):
             yield x
         return
 
-    def amp(self, volume, it):
-        for x in it:
-            yield volume*x
-        return
-
     def concat(self, *iters):
         for it in iters:
             for x in it:
@@ -92,7 +87,12 @@ class WaveGenerator(object):
         r = 1.0/len(iters)
         return self.amp(r, self.add(*iters))
 
-    def clip(self, duration, it):
+    def amp(self, it, volume):
+        for x in it:
+            yield volume*x
+        return
+
+    def clip(self, it, duration):
         n = int(self.framerate * duration)
         for i in xrange(n):
             try:
@@ -117,7 +117,7 @@ class WaveGenerator(object):
             i += 1
         return
 
-    def square(self, freq):
+    def rect(self, freq):
         freq = self.tone2freq(freq)
         if freq == 0:
             while 1:
@@ -131,7 +131,7 @@ class WaveGenerator(object):
                     yield -1
         return
 
-    def triangle(self, freq):
+    def saw(self, freq):
         freq = self.tone2freq(freq)
         if freq == 0:
             while 1:
@@ -165,20 +165,20 @@ def gen_sine_tone(framerate, tones, volume=0.4, duration=0.02):
     wav = gen.concat(*[ gen.clip(duration, gen.sine(k)) for k in tones ])
     return gen.amp(volume, wav)
 
-# gen_square_tone
-def gen_square_tone(framerate, tones, volume=0.3, attack=0.00, decay=0.0):
-    print 'gen_square_tone', tones
+# gen_rect_tone
+def gen_rect_tone(framerate, tones, volume=0.3, attack=0.00, decay=0.0):
+    print 'gen_rect_tone', tones
     gen = WaveGenerator(framerate)
-    wav = gen.mix(*[ gen.square(k) for k in tones ])
+    wav = gen.mix(*[ gen.rect(k) for k in tones ])
     env = gen.concat(gen.env(attack, 0.0, volume),
                      gen.env(decay, volume, 0.0))
     return gen.mult(wav, env)
 
-# gen_triangle_tone
-def gen_triangle_tone(framerate, tones, volume=0.5, attack=0.01, decay=0.7):
-    print 'gen_triangle_tone', tones
+# gen_saw_tone
+def gen_saw_tone(framerate, tones, volume=0.5, attack=0.01, decay=0.7):
+    print 'gen_saw_tone', tones
     gen = WaveGenerator(framerate)
-    wav = gen.mix(*[ gen.triangle(k) for k in tones ])
+    wav = gen.mix(*[ gen.saw(k) for k in tones ])
     env = gen.concat(gen.env(attack, 0.0, volume),
                      gen.env(decay, volume, 0.0))
     return gen.mult(wav, env)
@@ -196,28 +196,40 @@ def gen_noise_tone(framerate, tones, volume=0.5, attack=0.01, decay=0.7):
 def main(argv):
     import getopt
     def usage():
-        print 'usage: %s [-f] [-o out.wav] {-S|-Q|-T|-N} [tone ...]' % argv[0]
+        print 'usage: %s [-f] [-o out.wav] [-m maxlength] [expr]' % argv[0]
         return 100
     try:
-        (opts, args) = getopt.getopt(argv[1:], 'fo:SQTN')
+        (opts, args) = getopt.getopt(argv[1:], 'fo:m:')
     except getopt.GetoptError:
         return usage()
     force = False
+    maxlength = 10
     path = 'out.wav'
-    gen = gen_sine_tone
     for (k, v) in opts:
         if k == '-f': force = True
         elif k == '-o': path = v
-        elif k == '-S': gen = gen_sine_tone
-        elif k == '-Q': gen = gen_square_tone
-        elif k == '-T': gen = gen_triangle_tone
-        elif k == '-N': gen = gen_noise_tone
+        elif k == '-m': maxlength = float(v)
     if not args: return usage()
     if not force and os.path.exists(path): raise IOError(path)
     fp = open(path, 'wb')
     stream = WaveWriter(fp)
-    wav = gen(stream.framerate, args)
-    stream.write(wav)
+    expr = args.pop(0)
+    gen = WaveGenerator(stream.framerate)
+    vars = {
+        'add': gen.add,
+        'mult': gen.mult,
+        'amp': gen.amp,
+        'concat': gen.concat,
+        'mix': gen.mix,
+        'clip': gen.clip,
+        'env': gen.env,
+        'sine': gen.sine,
+        'rect': gen.rect,
+        'saw': gen.saw,
+        'noise': gen.noise,
+    }
+    wav = eval(expr, vars, {})
+    stream.write(gen.clip(wav, maxlength))
     stream.close()
     fp.close()
     return 0
