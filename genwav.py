@@ -92,7 +92,7 @@ class WaveGenerator(object):
         r = 1.0/len(iters)
         return self.amp(r, self.add(*iters))
 
-    def cut(self, duration, it):
+    def clip(self, duration, it):
         n = int(self.framerate * duration)
         for i in xrange(n):
             try:
@@ -119,44 +119,54 @@ class WaveGenerator(object):
 
     def square(self, freq):
         freq = self.tone2freq(freq)
-        w = int(self.framerate/freq/2)
-        while 1:
-            for i in xrange(w):
-                yield +1
-            for i in xrange(w):
-                yield -1
+        if freq == 0:
+            while 1:
+                yield 0
+        else:
+            w = int(self.framerate/freq/2)
+            while 1:
+                for i in xrange(w):
+                    yield +1
+                for i in xrange(w):
+                    yield -1
         return
 
     def triangle(self, freq):
         freq = self.tone2freq(freq)
-        w = int(self.framerate/freq)
-        r = 2.0/float(w)
-        while 1:
-            for i in xrange(w):
-                yield i*r-1.0
+        if freq == 0:
+            while 1:
+                yield 0
+        else:
+            w = int(self.framerate/freq)
+            r = 2.0/float(w)
+            while 1:
+                for i in xrange(w):
+                    yield i*r-1.0
         return
 
     def noise(self, freq):
         freq = self.tone2freq(freq)
-        w = int(self.framerate/freq/2)
-        while 1:
-            x = random.random()*2.0-1.0
-            for i in xrange(w):
-                yield x
+        if freq == 0:
+            while 1:
+                yield 0
+        else:
+            w = int(self.framerate/freq/2)
+            while 1:
+                x = random.random()*2.0-1.0
+                for i in xrange(w):
+                    yield x
         return
         
 
 # gen_sine_tone
-def gen_sine_tone(framerate, tones, volume=0.5, attack=0.01, decay=0.2):
+def gen_sine_tone(framerate, tones, volume=0.4, duration=0.02):
     print 'gen_sine_tone', tones
     gen = WaveGenerator(framerate)
-    wav = gen.mix(*[ gen.sine(k) for k in tones ])
-    env = gen.concat(gen.env(attack, 0.0, volume),
-                     gen.env(decay, volume, 0.0))
-    return gen.mult(wav, env)
+    wav = gen.concat(*[ gen.clip(duration, gen.sine(k)) for k in tones ])
+    return gen.amp(volume, wav)
 
 # gen_square_tone
-def gen_square_tone(framerate, tones, volume=0.3, attack=0.01, decay=0.1):
+def gen_square_tone(framerate, tones, volume=0.3, attack=0.00, decay=0.0):
     print 'gen_square_tone', tones
     gen = WaveGenerator(framerate)
     wav = gen.mix(*[ gen.square(k) for k in tones ])
